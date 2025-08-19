@@ -2,7 +2,13 @@ module OliveReadOnly
 using Olive
 using Olive.Toolips
 using Olive.Toolips.Components
+using Olive.ToolipsSession
+using Olive: Directory, Cell, Project
+import Olive: build
 
+#==
+Cells
+==#
 convert_readonly(cell::Cell{:image}) = begin
     convimg = base64img("", cell.outputs[2], lowercase(cell.source))
     Cell{:imagero}(convimg[:src], "$(cell.outputs[3])!|$(cell.outputs[4])")
@@ -13,27 +19,82 @@ convert_readonly(cell::Cell{:vimage}) = begin
 end
 
 convert_readonly(cell::Cell{:code}) = begin
-
+    Cell{:codero}(cell.source, cell.outputs)
 end
 
 convert_readonly(cell::Cell{:markdown}) = begin
-
+    Cell{:markdownro}(cell.source)
 end
 
+convert_readonly(cells::Vector{Cell}) = [convert_readonly(cell) for cell in cells]
+
+#==
+Directories
+==#
+
 function build(c::AbstractConnection, dir::Directory{:readonly})
-    path_notifier = h3("selectnotify", text = dir.uri)
-    newcells = directory_cells(dir.uri, wdtype = :switchselector)
+    dirid, diruri = if ~(contains(dir.uri, "!;"))
+        dirid = Toolips.gen_ref(5)
+        diruri = dir.uri
+        dir.uri = dirid * "!;" * dir.uri
+        (dirid, diruri)
+    else
+        splts = split(dir.uri, "!;")
+        (splts[1], splts[2])
+    end
+    newcells = Olive.directory_cells(diruri, wdtype = :roselector)
     childs = Vector{Servable}([begin
-        build_selector_cell(c, mcell, dir)
+        build_readonly_filecell(c, mcell, dir)
     end for mcell in newcells])
-    selectionbox = div("selectionbox", children = childs)
-    dirbox = div("selectdir", children = [path_notifier, selectionbox])
+    selectionbox = div("selbox$dirid", children = childs, ex = "0")
+    style!(selectionbox, "height" => 0percent, "overflow" => "hidden")
+    dirbox = div("seldir$dirid", children = [selectionbox])
+    on(c, dirbox, "click") do cm::ComponentModifier
+        selboxn = "selbox$dirid"
+        if cm[selboxn]["ex"] == "0"
+            style!(cm, selboxn, "height" => "auto")
+            cm[selboxn] = "ex" => "1"
+            return
+        end
+        style!(cm, selboxn, "height" => 0percent)
+        cm[selboxn] = "ex" => "0"
+    end
+    style!(dirbox, "background-color" => "#752835", "overflow" => "hidden", "border-radius" => 0px)
     dirbox::Component{:div}
 end
 
-function build_readonly_filecell(c::AbstractConnection, cell::Cell{<:Any}, dir::Directory{<:Any})
-
+function build_readonly_filecell(c::AbstractConnection, cell::Cell{:roselector}, dir::Directory{<:Any})
+    build(c, cell, dir)
 end
+
+function build_readonly_filecell(c::AbstractConnection, cell::Cell{<:Any}, dir::Directory{<:Any})
+    maincell = Olive.build_selector_cell(c, cell, dir, false)
+    on(c, maincell, "dblclick") do cm::ComponentModifier
+        Olive.olive_notify!(cm, "load readonly project!")
+    end
+    maincell
+end
+
+function build(c::Connection, cell::Cell{:roselector}, d::Directory{<:Any}, bind::Bool = true)
+    filecell::Component{<:Any} = Olive.build_base_cell(c, cell, d, binding = false)
+    filecell[:children] = filecell[:children]["cell$(cell.id)label"]
+    style!(filecell, "background-color" => "#221440")
+    on(c, filecell, "click") do cm::ComponentModifier
+        path = cell.outputs * "/" * cell.source
+        newcells = Olive.directory_cells(path, wdtype = :roselector)
+        dir = Directory(path)
+        childs = Vector{Servable}([begin
+            build_readonly_filecell(c, mcell, dir)
+        end for mcell in newcells])
+        dirid = split(d.uri, "!;")[1]
+        set_children!(cm, "selbox$dirid", childs)
+    end
+    filecell::Component{<:Any}
+end
+
+#==
+projects
+==#
 
 function build_tab(c::Connection, p::Project{:readonly}; hidden::Bool = false)
     fname::String = p.id
@@ -83,5 +144,5 @@ function build_tab(c::Connection, p::Project{:readonly}; hidden::Bool = false)
     tabbody::Component{:div}
 end
 
-
+export convert_readonly
 end # module OliveReadOnly
