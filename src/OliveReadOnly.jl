@@ -48,8 +48,10 @@ function build(c::AbstractConnection, dir::Directory{:readonly})
     end for mcell in newcells])
     selectionbox = div("selbox$dirid", children = childs, ex = "0")
     style!(selectionbox, "height" => 0percent, "overflow" => "hidden")
-    dirbox = div("seldir$dirid", children = [selectionbox])
-    on(c, dirbox, "click") do cm::ComponentModifier
+    lblbox = div("main$dirid", children = [a(text = dir.uri)])
+    style!(lblbox, "cursor" => "pointer")
+    dirbox = div("seldir$dirid", children = [lblbox, selectionbox])
+    on(c, lblbox, "click") do cm::ComponentModifier
         selboxn = "selbox$dirid"
         if cm[selboxn]["ex"] == "0"
             style!(cm, selboxn, "height" => "auto")
@@ -87,7 +89,8 @@ function build(c::Connection, cell::Cell{:roselector}, d::Directory{<:Any}, bind
             build_readonly_filecell(c, mcell, dir)
         end for mcell in newcells])
         dirid = split(d.uri, "!;")[1]
-        set_children!(cm, "selbox$dirid", childs)
+        returner = Olive.build_any_returner(build_readonly_filecell, c, path, "selbox$dirid", d.uri, :roselector)
+        set_children!(cm, "selbox$dirid", [returner, childs ...])
     end
     filecell::Component{<:Any}
 end
