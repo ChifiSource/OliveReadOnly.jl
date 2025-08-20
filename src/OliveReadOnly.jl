@@ -9,6 +9,18 @@ import Olive: build, olive_read, build_tab
 #==
 Cells
 ==#
+
+convert_readonly(cell::Cell{<:Any}) = begin
+    ct = typeof(cell).parameters[1]
+    Cell{:readonly}(cell.source, string(ct) => cell.outputs)
+end
+
+convert_readonly(cells::Vector{Cell}) = [convert_readonly(cell) for cell in cells]
+
+convert_readonly(cell::Cell{:tomlvalues}) = begin
+    Cell{:tomlro}(cell.source)
+end
+
 convert_readonly(cell::Cell{:image}) = begin
     # TODO The READ needs to be handled differently, the data is different when read from a file.
     convimg = if typeof(cell.outputs) <: AbstractString
@@ -33,7 +45,40 @@ convert_readonly(cell::Cell{:markdown}) = begin
     Cell{:markdownro}(cell.source)
 end
 
-convert_readonly(cells::Vector{Cell}) = [convert_readonly(cell) for cell in cells]
+function build(c::Connection, cm::ComponentModifier, cell::Cell{:readonly}, proj::Project{<:Any})
+    cellid = cell.id
+    cell_label = cell.outputs[1]
+#== TODO Perhaps we have a new extensible function from `Olive` called `get_highlighted` or something, 
+    with parametric dispatch for cells. Otherwise, there's no way to know which marking function to call.==#
+    tm = try
+        get_highlighter(c, cell)
+    catch
+        nothing
+    end
+    text = cell.source
+    inner_label = h4(text = cell_label)
+    inner_code = div("cell$cellid", text = text)
+    inner = div("cell$cellid", children = [inner_label, inner_code])
+    style!(inner_label, "color" => "white")
+    style!(inner, "background-color" => "#171717", "border-radius" => 4px, "padding" => 3percent)
+    output = div("outputcell$cellid", text = string(cell.outputs[2]))
+    div("cellcontainter$cellid", children = [inner, output])
+end
+
+function build(c::Connection, cm::ComponentModifier, cell::Cell{:tomlro}, proj::Project{<:Any})
+    cellid = cell.id
+    tm = c[:OliveCore].users[getname(c)].data["highlighters"]["toml"]
+    set_text!(tm, cell.source)
+    Olive.OliveHighlighters.mark_toml!(tm)
+    result = string(tm)
+    inner_label = h4(text = "toml")
+    inner_code = div("cell$cellid", text = result)
+    inner = div("cell$cellid", children = [inner_label, inner_code])
+    style!(inner_label, "color" => "lightblue")
+    style!(inner, "background-color" => "#171717", "border-radius" => 4px, "padding" => 3percent)
+    output = div("outputcell$cellid", text = cell.outputs)
+    div("cellcontainter$cellid", children = [inner, output])
+end
 
 function build(c::Connection, cm::ComponentModifier, cell::Cell{:codero}, proj::Project{<:Any})
     cellid = cell.id
