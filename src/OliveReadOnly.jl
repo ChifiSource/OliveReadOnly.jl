@@ -11,12 +11,18 @@ Cells
 ==#
 convert_readonly(cell::Cell{:image}) = begin
     # TODO The READ needs to be handled differently, the data is different when read from a file.
-    convimg = base64img("", cell.outputs[2], lowercase(cell.source))
+    convimg = if typeof(cell.outputs) <: AbstractString
+        cell.source = replace(lowercase(cell.source), "# " => "", " " => "", "\n" => "")
+        outp_splits = split(cell.outputs, "!|")
+        img(src = "'data:image/$(cell.source);base64," * outp_splits[2] * "'")
+    else
+        base64img("", cell.outputs[2], lowercase(cell.source))
+    end
     Cell{:imagero}(convimg[:src], "$(cell.outputs[3])!|$(cell.outputs[4])")
 end
 
 convert_readonly(cell::Cell{:vimage}) = begin
-    Cell{:vimagero}("", cell.source)
+    Cell{:vimagero}(cell.source)
 end
 
 convert_readonly(cell::Cell{:code}) = begin
@@ -28,6 +34,24 @@ convert_readonly(cell::Cell{:markdown}) = begin
 end
 
 convert_readonly(cells::Vector{Cell}) = [convert_readonly(cell) for cell in cells]
+
+function build(c::Connection, cm::ComponentModifier, cell::Cell{:codero}, proj::Project{<:Any})
+    cellid = cell.id
+    tm = Olive.JULIA_HIGHLIGHTER
+    set_text!(tm, cell.source)
+    Olive.OliveHighlighters.mark_julia!(tm)
+    result = string(tm)
+    inner = div("cell$cellid", text = result)
+    style!(inner, "background-color" => "#171717", "border-radius" => 4px, "padding" => 3percent)
+    output = div("outputcell$cellid", text = cell.outputs)
+    div("cellcontainter$cellid", children = [inner, output])
+end
+
+function build(c::Connection, cm::ComponentModifier, cell::Cell{:markdownro}, proj::Project{<:Any})
+    cellid = cell.id
+    inner = tmd("cell$cellid", cell.source)
+    div("cellcontainter$cellid", children = [inner])::Component{:div}
+end
 
 #==
 Directories
@@ -48,18 +72,18 @@ function build(c::AbstractConnection, dir::Directory{:readonly})
         build_readonly_filecell(c, mcell, dir)
     end for mcell in newcells])
     selectionbox = div("selbox$dirid", children = childs, ex = "0")
-    style!(selectionbox, "height" => 0percent, "overflow" => "hidden")
-    lblbox = div("main$dirid", children = [a(text = dir.uri)])
+    style!(selectionbox, "height" => 0percent, "overflow" => "hidden", "opacity" => 0percent)
+    lblbox = div("main$dirid", children = [a(text = diruri, style = "color:#ffc494;")])
     style!(lblbox, "cursor" => "pointer")
     dirbox = div("seldir$dirid", children = [lblbox, selectionbox])
     on(c, lblbox, "click") do cm::ComponentModifier
         selboxn = "selbox$dirid"
         if cm[selboxn]["ex"] == "0"
-            style!(cm, selboxn, "height" => "auto")
+            style!(cm, selboxn, "height" => "auto", "opacity" => 100percent)
             cm[selboxn] = "ex" => "1"
             return
         end
-        style!(cm, selboxn, "height" => 0percent)
+        style!(cm, selboxn, "height" => 0percent, "opacity" => 0percent)
         cm[selboxn] = "ex" => "0"
     end
     style!(dirbox, "background-color" => "#752835", "overflow" => "hidden", "border-radius" => 0px)
@@ -111,11 +135,12 @@ projects
 function build_tab(c::Connection, p::Project{:readonly}; hidden::Bool = false)
     fname::String = p.id
     tabbody::Component{:div} = div("tab$(fname)", class = "tabopen")
-    style!(tabbody, "background-color" => "#ffc2ad")
+    style!(tabbody, "background-color" => "#ad4463")
     if(hidden)
         tabbody[:class]::String = "tabclosed"
     end
     tablabel::Component{:a} = a("tablabel$(fname)", text = p.name, class = "tablabel")
+    style!(tablabel, "color" => "#fff8d4")
     push!(tabbody, tablabel)
     on(c, tabbody, "click") do cm::ComponentModifier
         if p.id in cm
@@ -125,7 +150,7 @@ function build_tab(c::Connection, p::Project{:readonly}; hidden::Bool = false)
         inpane = findall(proj::Project{<:Any} -> proj[:pane] == p[:pane], projects)
         [begin
             if projects[e].id != p.id 
-                style_tab_closed!(cm, projects[e])
+                Olive.style_tab_closed!(cm, projects[e])
             end
             nothing
         end  for e in inpane]
@@ -151,6 +176,8 @@ function build_tab(c::Connection, p::Project{:readonly}; hidden::Bool = false)
         end
         style!(decollapse_button, "color" => "blue")
         controls::Vector{<:AbstractComponent} = Olive.tab_controls(c, p)
+        controls = [controls["$(fname)switch"], controls["$(fname)close"]]
+        style!(controls[1], "color" => "white")
         insert!(controls, 1, decollapse_button)
         [begin append!(cm, tabbody, serv); nothing end for serv in controls]
     end
