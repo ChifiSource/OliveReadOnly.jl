@@ -3,13 +3,14 @@ using Olive
 using Olive.Toolips
 using Olive.Toolips.Components
 using Olive.ToolipsSession
-using Olive: Directory, Cell, Project
-import Olive: build
+using Olive: Directory, Cell, Project, getname
+import Olive: build, olive_read, build_tab
 
 #==
 Cells
 ==#
 convert_readonly(cell::Cell{:image}) = begin
+    # TODO The READ needs to be handled differently, the data is different when read from a file.
     convimg = base64img("", cell.outputs[2], lowercase(cell.source))
     Cell{:imagero}(convimg[:src], "$(cell.outputs[3])!|$(cell.outputs[4])")
 end
@@ -72,7 +73,15 @@ end
 function build_readonly_filecell(c::AbstractConnection, cell::Cell{<:Any}, dir::Directory{<:Any})
     maincell = Olive.build_selector_cell(c, cell, dir, false)
     on(c, maincell, "dblclick") do cm::ComponentModifier
-        Olive.olive_notify!(cm, "load readonly project!")
+        cells = olive_read(cell)
+        cells = convert_readonly(cells)
+        projdata::Dict{Symbol, Any} = Dict{Symbol, Any}(:cells => cells,
+            :path => cell.outputs, :pane => "one")
+        newproj = Project{:readonly}(cell.source, projdata)
+        env = c[:OliveCore].users[getname(c)].environment
+        push!(env.projects, newproj)
+        tab::Component{:div} = build_tab(c, newproj)
+        Olive.open_project(c, cm, newproj, tab)
     end
     maincell
 end
@@ -102,6 +111,7 @@ projects
 function build_tab(c::Connection, p::Project{:readonly}; hidden::Bool = false)
     fname::String = p.id
     tabbody::Component{:div} = div("tab$(fname)", class = "tabopen")
+    style!(tabbody, "background-color" => "#ffc2ad")
     if(hidden)
         tabbody[:class]::String = "tabclosed"
     end
@@ -140,7 +150,7 @@ function build_tab(c::Connection, p::Project{:readonly}; hidden::Bool = false)
             remove!(cm2, "$(fname)dec")
         end
         style!(decollapse_button, "color" => "blue")
-        controls::Vector{<:AbstractComponent} = tab_controls(c, p)
+        controls::Vector{<:AbstractComponent} = Olive.tab_controls(c, p)
         insert!(controls, 1, decollapse_button)
         [begin append!(cm, tabbody, serv); nothing end for serv in controls]
     end
