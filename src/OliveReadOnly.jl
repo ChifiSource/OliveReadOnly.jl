@@ -69,7 +69,7 @@ convert_readonly(cell::Cell{:tomlro}) = cell
 convert_readonly(cell::Cell{:markdownro}) = cell
 convert_readonly(cell::Cell{:codero}) = cell
 
-convert_readonly(cells::Vector{Cell}) = [convert_readonly(cell) for cell in cells]::Vector{Cell}
+convert_readonly(cells::Vector{Cell}) = Vector{Cell}([convert_readonly(cell) for cell in cells])::Vector{Cell}
 
 convert_readonly(cell::Cell{:tomlvalues}) = begin
     Cell{:tomlro}(cell.source)
