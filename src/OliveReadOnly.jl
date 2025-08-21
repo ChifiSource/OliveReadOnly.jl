@@ -1,10 +1,39 @@
+"""
+Created in August, 2025 by
+[chifi - an open source software dynasty.](https://github.com/orgs/ChifiSource)
+- This software is MIT-licensed.
+### OliveReadOnly
+`OliveReadOnly` provides `Olive` with read only cells, projects, a read-only file type (.post), directories, and an export format (.post). 
+This has limited use-cases; this is likely only useful for certain extensions, or for **hosting Olive**.
+##### bindings
+```julia
+# internal:
+convert_readonly
+build_readonly_filecell
+
+
+# olive extensions:
+
+#   cells:
+build(c::Connection, cm::ComponentModifier, cell::Cell{:readonly}, proj::Project{<:Any})
+build(c::Connection, cm::ComponentModifier, cell::Cell{:tomlro}, proj::Project{<:Any})
+build(c::Connection, cm::ComponentModifier, cell::Cell{:codero}, proj::Project{<:Any})
+build(c::Connection, cm::ComponentModifier, cell::Cell{:markdownro}, proj::Project{<:Any})
+
+build(c::Connection, cell::Cell{:post}, d::Directory{<:Any})
+olive_save(p::Project{<:Any}, pe::ProjectExport{:post})
+# other:
+build(c::AbstractConnection, dir::Directory{:readonly})
+build_tab(c::Connection, p::Project{:readonly}; hidden::Bool = false)
+```
+"""
 module OliveReadOnly
 using Olive
 using Olive.Toolips
 using Olive.Toolips.Components
 using Olive.ToolipsSession
-using Olive: Directory, Cell, Project, getname
-import Olive: build, olive_read, build_tab
+using Olive: Directory, Cell, Project, getname, ProjectExport
+import Olive: build, olive_read, build_tab, olive_save, is_jlcell
 
 #==
 Cells
@@ -15,7 +44,32 @@ convert_readonly(cell::Cell{<:Any}) = begin
     Cell{:readonly}(cell.source, string(ct) => cell.outputs)
 end
 
-convert_readonly(cells::Vector{Cell}) = [convert_readonly(cell) for cell in cells]
+function olive_save(p::Project{<:Any}, pe::ProjectExport{:post})
+    path = p[:path]
+    if ~(contains(path), ".post")
+        path = path * ".post"
+    end
+    joined::String = join(string(cell) for cell in convert_readonly(proj[:cells]))
+    open(path, "w") do io
+        write(io, joined)
+    end
+    joined = nothing
+    nothing::Nothing
+end
+
+function build(c::Connection, cell::Cell{:post}, d::Directory{<:Any})
+    hiddencell = build_base_cell(c, cell, d)
+    style!(hiddencell, "background-color" => "#AA104F")
+    style!(hiddencell, "cursor" => "pointer")
+    hiddencell
+end
+
+convert_readonly(cell::Cell{:readonly}) = cell
+convert_readonly(cell::Cell{:tomlro}) = cell
+convert_readonly(cell::Cell{:markdownro}) = cell
+convert_readonly(cell::Cell{:codero}) = cell
+
+convert_readonly(cells::Vector{Cell}) = [convert_readonly(cell) for cell in cells]::Vector{Cell}
 
 convert_readonly(cell::Cell{:tomlvalues}) = begin
     Cell{:tomlro}(cell.source)
@@ -44,6 +98,10 @@ end
 convert_readonly(cell::Cell{:markdown}) = begin
     Cell{:markdownro}(cell.source)
 end
+
+is_jlcell(T::Type{Cell{:readonly}}) = false
+is_jlcell(T::Type{Cell{:tomlro}}) = false
+is_jlcell(T::Type{Cell{:codero}}) = false
 
 function build(c::Connection, cm::ComponentModifier, cell::Cell{:readonly}, proj::Project{<:Any})
     cellid = cell.id
@@ -229,5 +287,4 @@ function build_tab(c::Connection, p::Project{:readonly}; hidden::Bool = false)
     tabbody::Component{:div}
 end
 
-export convert_readonly
 end # module OliveReadOnly
