@@ -11,3 +11,9 @@ The intended use-case involves assembling your own read-only directories *manual
 ```julia
 newdirec = Olive.Directory(pwd(), dirtype = "readonly"); env = Olive.CORE.users[1].environment; push!(env.directories, newdirec)
 ```
+Consider the different steps, as this is the same technique we would use to preload a read only directory into an `Olive` session. First we get the environment, then we push a new directory to it.
+```julia
+newdirec = Olive.Directory(pwd(), dirtype = "readonly")
+env = Olive.CORE.users[1].environment
+push!(env.directories, newdirec)
+```
